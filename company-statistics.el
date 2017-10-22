@@ -47,6 +47,7 @@
 
 ;;; Code:
 
+(require 'cl)
 (require 'company)
 
 (defgroup company-statistics nil
@@ -74,25 +75,44 @@ As this is a global cache, making it too small defeats the purpose."
 not been used before."
   :type 'boolean)
 
-(defcustom company-statistics-capture-context #'company-statistics-capture-context-heavy
+(defcustom company-statistics-capture-context #'company-statistics-capture-context
   "Function called with single argument (t if completion started manually).
 This is the place to store any context information for a completion run."
   :type 'function)
 
-(defcustom company-statistics-score-change #'company-statistics-score-change-heavy
+(defcustom company-statistics-score-change #'company-statistics-score-change
   "Function called with completion choice.  Using arbitrary other info,
 it should produce an alist, each entry labeling a context and the
 associated score update: ((ctx-a . 1) (\"str\" . 0.5) (nil . 1)).  Nil is
 the global context."
   :type 'function)
 
-(defcustom company-statistics-score-calc #'company-statistics-score-calc-heavy
+(defcustom company-statistics-score-calc #'company-statistics-score-calc
   "Function called with completion candidate.  Using arbitrary other info,
 eg, on the current context, it should evaluate to the candidate's score (a
 number)."
   :type 'function)
 
+(defvar company-statistics-features nil)
+
+(defconst company-statistics-default-features-heavy
+  '((keyword (:get-context . (dg-company-statistics--last-keyword-ctx)))
+    (symbol (:get-context . (dg-company-statistics--parent-symbol-ctx)))
+    (file (:get-context . buffer-file-name))
+    (major-mode (:get-context . major-mode))
+    (global (:get-context . t))))
+
+(defconst company-statistics-default-features-light
+  '((global (:get-context . t))
+    (major-mode (:get-context . major-mode))))
+
+(setq company-statistics-features company-statistics-default-features-heavy)
+
 ;; internal vars, persistence
+
+(defvar company-statistics-feature-scores-alist nil
+  "This variable will be found to an alist of (FEATURE . SCORE) elements
+during the evaluation of `company-statistics-score-calc-expr'.")
 
 (defvar company-statistics--scores nil
   "Store selection frequency of candidates in given contexts.")
@@ -165,24 +185,32 @@ number)."
 
 ;; score calculation for insert/retrieval --- can be changed on-the-fly
 
-(defun company-statistics-score-change-light (_cand)
-  "Count for global score and mode context."
-  (list (cons nil 1)
-        (cons major-mode 1)))           ;major-mode is never nil
-
-(defun company-statistics-score-calc-light (cand)
-  "Global score, and bonus for matching major mode."
-  (let ((scores (gethash cand company-statistics--scores)))
-    (if scores
-        ;; cand may be in scores and still have no global score left
-        (+ (or (cdr (assoc nil scores)) 0)
-           (or (cdr (assoc major-mode scores)) 0))
-      0)))
-
 (defvar company-statistics--context nil
   "Current completion context, a list of entries searched using `assoc'.")
 
-(defun company-statistics--last-keyword ()
+(defvar company-statistics--override-context nil
+  "Optional context intended to be manually set for debugging/testing purposes.")
+
+;; NOTE: There seem to be cases where company-statistics--context will not be
+;; updated in time and the score calc will be on the basis of an older context.
+;; Therefore, we'll use a function to access it, which will recapture it if it
+;; looks like an update is needed.
+(defvar company-statistics--previous-context-id nil)
+
+(defun company-statistics--get-context-current-id ()
+  "Identifies the position with which the current context is associated."
+  (point))
+
+(defun company-statistics--get-context (&optional force-refresh)
+  (or company-statistics--override-context
+      (let ((curid (company-statistics--get-context-current-id)))
+        (when (or force-refresh
+                  (not (equal curid company-statistics--previous-context-id)))
+          (company-statistics-capture-context)
+          (setq company-statistics--previous-context-id curid))
+        company-statistics--context)))
+
+(defun company-statistics--last-keyword-ctx ()
   "Return last keyword, ie, text of region fontified with the
 font-lock-keyword-face up to point, or nil."
   (let ((face-pos (point)))
@@ -195,66 +223,64 @@ font-lock-keyword-face up to point, or nil."
     (when (and (number-or-marker-p face-pos)
                (eq (get-text-property (max (point-min) (1- face-pos)) 'face)
                    'font-lock-keyword-face))
-      (list :keyword
-            (buffer-substring-no-properties
-             (previous-single-property-change face-pos 'face nil (point-min))
-             face-pos)))))
+      (buffer-substring-no-properties
+       (previous-single-property-change face-pos 'face nil (point-min))
+       face-pos))))
 
-(defun company-statistics--parent-symbol ()
+(defun company-statistics--parent-symbol-ctx ()
   "Return symbol immediately preceding current completion prefix, or nil.
 May be separated by punctuation, but not by whitespace."
   ;; expects to be at start of company-prefix; little sense for lisps
   (let ((preceding (save-excursion
                      (unless (zerop (skip-syntax-backward "."))
                        (substring-no-properties (symbol-name (symbol-at-point)))))))
-    (when preceding
-      (list :symbol preceding))))
+    preceding))
 
-(defun company-statistics--file-name ()
-  "Return buffer file name, or nil."
-  (when buffer-file-name
-    (list :file buffer-file-name)))
+(defun company-statistics-score-change (_cand)
+  "Score for candidate determined using the current `company-statistics-features'."
+  (let* ((context (company-statistics--get-context))
+         (changed (mapcar (lambda (feat)
+                            (let* ((key (car feat))
+                                   (cfg (cdr feat))
+                                   (incr-expr (cdr (assoc :incr cfg)))
+                                   (incr (or (eval incr-expr) 1))
+                                   (ctx (assoc key context)))
+                              (when (and ctx (> incr 0))
+                                (cons ctx incr))))
+                          company-statistics-features)))
+    (delq nil changed)))
 
-(defun company-statistics-capture-context-heavy (_manual)
-  "Calculate some context, once for the whole completion run."
+(defun company-statistics-capture-context (&optional _manual)
   (save-excursion
     (backward-char (length company-prefix))
-    (setq company-statistics--context
-          (delq nil
-                (list (company-statistics--last-keyword)
-                      (company-statistics--parent-symbol)
-                      (company-statistics--file-name))))))
+    (let* ((ctx (mapcar (lambda (feat)
+                          (let* ((key (car feat))
+                                 (get-ctx-form (cdr (assoc :get-context feat)))
+                                 (value (eval get-ctx-form)))
+                            (when value
+                              (list key value))))
+                        company-statistics-features))
+           (ctx-no-nils (delq nil ctx)))
+      (setq company-statistics--context ctx-no-nils)
+      ctx-no-nils)))
 
-(defun company-statistics-score-change-heavy (_cand)
-  "Count for global score, mode context, last keyword, parent symbol,
-buffer file name."
-  (let ((last-kwd (assoc :keyword company-statistics--context))
-        (parent-symbol (assoc :symbol company-statistics--context))
-        (file (assoc :file company-statistics--context)))
-    (nconc                                ;when's nil is removed
-     (list (cons nil 1)
-           (cons major-mode 1)) ;major-mode is never nil
-     ;; only add pieces of context if non-nil
-     (when last-kwd (list (cons last-kwd 1)))
-     (when parent-symbol (list (cons parent-symbol 1)))
-     (when file (list (cons file 1))))))
-
-(defun company-statistics-score-calc-heavy (cand)
-  "Global score, and bonus for matching major mode, last keyword, parent
-symbol, buffer file name."
-  (let ((scores (gethash cand company-statistics--scores))
-        (last-kwd (assoc :keyword company-statistics--context))
-        (parent-symbol (assoc :symbol company-statistics--context))
-        (file (assoc :file company-statistics--context)))
-    (if scores
-        ;; cand may be in scores and still have no global score left
-        (+ (or (cdr (assoc nil scores)) 0)
-           (or (cdr (assoc major-mode scores)) 0)
-           ;; some context may not apply, make sure to not get nil context
-           (or (cdr (when last-kwd (assoc last-kwd scores))) 0)
-           (or (cdr (when parent-symbol (assoc parent-symbol scores))) 0)
-           (or (cdr (when file (assoc file scores))) 0))
-      0)))
+(defun company-statistics-score-calc (cand &optional using-company-prefix)
+  (setq using-company-prefix (or using-company-prefix company-prefix))
+  (let* ((company-prefix using-company-prefix)
+         (context (company-statistics--get-context))
+         (scores (gethash cand company-statistics--scores))
+         (cand-score 0))
+    (dolist (f company-statistics-features)
+      (let* ((feat-sym (car f))
+             (feat-config (cdr f))
+             (feat-weight (or (cdr (assoc :weight feat-config)) 1))
+             (feat-value-assoc (assoc feat-sym context))
+             (feat-value (cadr feat-value-assoc))
+             (feat-score-key (list feat-sym feat-value))
+             (feat-score (cdr (assoc feat-score-key scores))))
+        (when feat-score
+          (setq cand-score (+ cand-score (* feat-score feat-weight))))))
+    cand-score))
 
 ;; score manipulation in one place --- know about hash value alist structure
 
@@ -334,6 +360,16 @@ changed for candidates distinguishable by score."
               (lambda (cand1 cand2)
                 (>  (funcall company-statistics-score-calc cand1)
                     (funcall company-statistics-score-calc cand2))))))
+
+(defun company-statistics--get-scores-alist (&optional scores-hash)
+  "Returns the scores hash table as an alist. This function is intended to aid
+debugging by making the scores easier to inspect."
+  (setq scores-hash (or scores-hash company-statistics--scores))
+  (let ((scores-alist nil))
+    (and scores-hash (maphash (lambda (key val)
+                                (add-to-list 'scores-alist `(,key . ,val)))
+                              scores-hash))
+    scores-alist))
 
 ;;;###autoload
 (define-minor-mode company-statistics-mode
