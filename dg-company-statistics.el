@@ -274,6 +274,8 @@ May be separated by punctuation, but not by whitespace."
       ctx-no-nils)))
 
 (defun dg-company-statistics--score-calc-components (cand &optional using-company-prefix)
+  "Helper function for `dg-company-statistics-score-calc' that constructs a list containing
+score information for each feature."
   (setq using-company-prefix (or using-company-prefix company-prefix))
   (let* ((company-prefix using-company-prefix)
          (context (dg-company-statistics--get-context))
