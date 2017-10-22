@@ -75,9 +75,52 @@ As this is a global cache, making it too small defeats the purpose."
 not been used before."
   :type 'boolean)
 
-(defcustom dg-company-statistics-features nil
-  ""
+(defcustom dg-company-statistics-features
+  '((keyword (:get-context . (dg-company-statistics--last-keyword-ctx))
+             (:incr . 1)
+             (:weight . 1))
+    (symbol (:get-context . (dg-company-statistics--parent-symbol-ctx))
+            (:incr . 1)
+            (:weight . 1))
+    (file (:get-context . buffer-file-name)
+          (:incr . 1)
+          (:weight . 1))
+    (major-mode (:get-context . major-mode)
+                (:incr . 1)
+                (:weight . 1))
+    (global (:get-context . t)
+            (:incr . 1)
+            (:weight . 1)))
+  "An alist specifying the different \"features\" to take into account when creating
+statistics to score candidates. Each element of this list should be of the form
+(NAME . CONFIG) where NAME is a unique symbol identifying the feature and CONFIG is
+an alist configuring that feature. The CONFIG alist should have the following
+entries:
+  `:get-context' - an arbtirary form which will be evaluated in order to
+                   determine the current contextual value associated with NAME.
+  `:incr' - a number indicating how much to increment the accumulated score
+            each time a particular value is seen (defaults to 1).
+  `:weight' - a number used as a multiplier when summing up candidate scores in
+              the default implementation of `dg-company-statistics-score-reducer'.
+
+"
   :type 'list)
+
+(defcustom dg-company-statistics-score-reducer #'dg-company-statistics-default-score-reducer
+  "Function called with completion candidate and a list containing the score components.
+
+The \"score components\" list all contain one entry for each feature. Each of
+these entries will have the following form:
+  `:feature' - the feature's name.
+  `:config' - the feature's configuration alist.
+  `:value' - the value of `:feature' associated with the current candidate.
+  `:score' - the candidate's accumulated score of the current value.
+  `:total' - the candiate's total score across all values of `:feature'.
+  `:percent' - the `:score' as a percentage of `:total'.
+NOTE: In cases where the candidate has no value associated with the feature, `:score',
+`:total' and `:percent' will be nil, 0 and 0.0, respectively.
+"
+  :type 'function)
 
 (defcustom dg-company-statistics-capture-context #'dg-company-statistics-capture-context
   "Function called with single argument (t if completion started manually).
@@ -96,23 +139,6 @@ the global context."
 eg, on the current context, it should evaluate to the candidate's score (a
 number)."
   :type 'function)
-
-(defcustom dg-company-statistics-score-reducer #'dg-company-statistics-default-score-reducer
-  "Function called with completion candidate an a list containing the score components."
-  :type 'function)
-
-(defconst dg-company-statistics-default-features-heavy
-  '((keyword (:get-context . (dg-company-statistics--last-keyword-ctx)))
-    (symbol (:get-context . (dg-company-statistics--parent-symbol-ctx)))
-    (file (:get-context . buffer-file-name))
-    (major-mode (:get-context . major-mode))
-    (global (:get-context . t))))
-
-(defconst dg-company-statistics-default-features-light
-  '((global (:get-context . t))
-    (major-mode (:get-context . major-mode))))
-
-(setq dg-company-statistics-features dg-company-statistics-default-features-heavy)
 
 ;; internal vars, persistence
 
@@ -303,6 +329,7 @@ score information for each feature."
                                      (/ feat-score (float feat-total-score))
                                    0.0))
              (comp `((:feature . ,feat-sym)
+                     (:value . ,feat-value)
                      (:config . ,feat-config)
                      (:score . ,feat-score)
                      (:total . ,feat-total-score)
