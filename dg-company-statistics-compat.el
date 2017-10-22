@@ -2,6 +2,17 @@
 ;; Functions added for backwards compatibility below.                     ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defconst dg-company-statistics-default-features-heavy
+  '((keyword (:get-context . (dg-company-statistics--last-keyword-ctx)))
+    (symbol (:get-context . (dg-company-statistics--parent-symbol-ctx)))
+    (file (:get-context . buffer-file-name))
+    (major-mode (:get-context . major-mode))
+    (global (:get-context . t))))
+
+(defconst dg-company-statistics-default-features-light
+  '((global (:get-context . t))
+    (major-mode (:get-context . major-mode))))
+
 (defun dg-company-statistics-compat-score-reducer (cand score-components)
   (let ((score 0))
     (dolist (comp score-components)
