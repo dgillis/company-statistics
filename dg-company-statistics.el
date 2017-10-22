@@ -439,5 +439,8 @@ configuration.  You can customize this behavior with
 
 (add-hook 'kill-emacs-hook 'dg-company-statistics--maybe-save)
 
+(require 'dg-company-statistics-score-calc-cache-advice)
+(dg-company-statistics-score-calc-cache-advice-enable)
+
 (provide 'dg-company-statistics)
 ;;; dg-company-statistics.el ends here
