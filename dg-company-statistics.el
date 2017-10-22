@@ -1,4 +1,4 @@
-;;; company-statistics.el --- Sort candidates using completion history  -*- lexical-binding: t -*-
+;;; dg-company-statistics.el --- Sort candidates using completion history  -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2014-2017  Free Software Foundation, Inc.
 
@@ -27,12 +27,12 @@
 ;;
 ;; Package installed from elpa.gnu.org:
 ;;
-;;   (add-hook 'after-init-hook #'company-statistics-mode)
+;;   (add-hook 'after-init-hook #'dg-company-statistics-mode)
 ;;
 ;; Manually installed: make sure that this file is in load-path, and
 ;;
-;;   (require 'company-statistics)
-;;   (company-statistics-mode)
+;;   (require 'dg-company-statistics)
+;;   (dg-company-statistics-mode)
 ;;
 ;; Every time a candidate is chosen using company-mode, we keep track of this
 ;; (for a limited amount of recent choices).  When presenting completion
@@ -50,115 +50,115 @@
 (require 'cl)
 (require 'company)
 
-(defgroup company-statistics nil
+(defgroup dg-company-statistics nil
   "Completion candidates ranking by historical statistics."
   :group 'company)
 
-(defcustom company-statistics-size 400
-  "Number of completion choices that `company-statistics' keeps track of.
+(defcustom dg-company-statistics-size 400
+  "Number of completion choices that `dg-company-statistics' keeps track of.
 As this is a global cache, making it too small defeats the purpose."
   :type 'integer
   :initialize #'custom-initialize-default
-  :set #'company-statistics--log-resize)
+  :set #'dg-company-statistics--log-resize)
 
-(defcustom company-statistics-file
-  (concat user-emacs-directory "company-statistics-cache.el")
-  "File to save company-statistics state."
+(defcustom dg-company-statistics-file
+  (concat user-emacs-directory "dg-company-statistics-cache.el")
+  "File to save dg-company-statistics state."
   :type 'string)
 
-(defcustom company-statistics-auto-save t
+(defcustom dg-company-statistics-auto-save t
   "Whether to save the statistics when leaving emacs."
   :type 'boolean)
 
-(defcustom company-statistics-auto-restore t
-  "Whether to restore statistics when company-statistics is enabled and has
+(defcustom dg-company-statistics-auto-restore t
+  "Whether to restore statistics when dg-company-statistics is enabled and has
 not been used before."
   :type 'boolean)
 
-(defcustom company-statistics-capture-context #'company-statistics-capture-context
+(defcustom dg-company-statistics-capture-context #'dg-company-statistics-capture-context
   "Function called with single argument (t if completion started manually).
 This is the place to store any context information for a completion run."
   :type 'function)
 
-(defcustom company-statistics-score-change #'company-statistics-score-change
+(defcustom dg-company-statistics-score-change #'dg-company-statistics-score-change
   "Function called with completion choice.  Using arbitrary other info,
 it should produce an alist, each entry labeling a context and the
 associated score update: ((ctx-a . 1) (\"str\" . 0.5) (nil . 1)).  Nil is
 the global context."
   :type 'function)
 
-(defcustom company-statistics-score-calc #'company-statistics-score-calc
+(defcustom dg-company-statistics-score-calc #'dg-company-statistics-score-calc
   "Function called with completion candidate.  Using arbitrary other info,
 eg, on the current context, it should evaluate to the candidate's score (a
 number)."
   :type 'function)
 
-(defvar company-statistics-features nil)
+(defvar dg-company-statistics-features nil)
 
-(defconst company-statistics-default-features-heavy
+(defconst dg-company-statistics-default-features-heavy
   '((keyword (:get-context . (dg-company-statistics--last-keyword-ctx)))
     (symbol (:get-context . (dg-company-statistics--parent-symbol-ctx)))
     (file (:get-context . buffer-file-name))
     (major-mode (:get-context . major-mode))
     (global (:get-context . t))))
 
-(defconst company-statistics-default-features-light
+(defconst dg-company-statistics-default-features-light
   '((global (:get-context . t))
     (major-mode (:get-context . major-mode))))
 
-(setq company-statistics-features company-statistics-default-features-heavy)
+(setq dg-company-statistics-features dg-company-statistics-default-features-heavy)
 
 ;; internal vars, persistence
 
-(defvar company-statistics-feature-scores-alist nil
+(defvar dg-company-statistics-feature-scores-alist nil
   "This variable will be found to an alist of (FEATURE . SCORE) elements
-during the evaluation of `company-statistics-score-calc-expr'.")
+during the evaluation of `dg-company-statistics-score-calc-expr'.")
 
-(defvar company-statistics--scores nil
+(defvar dg-company-statistics--scores nil
   "Store selection frequency of candidates in given contexts.")
 
-(defvar company-statistics--log nil
+(defvar dg-company-statistics--log nil
   "Ring keeping a log of statistics updates.")
 
-(defvar company-statistics--index nil
+(defvar dg-company-statistics--index nil
   "Index into the log.")
 
-(defun company-statistics--init ()
-  "Initialize company-statistics."
-  (setq company-statistics--scores
-        (make-hash-table :test #'equal :size company-statistics-size))
-  (setq company-statistics--log (make-vector company-statistics-size nil)
-        company-statistics--index 0))
+(defun dg-company-statistics--init ()
+  "Initialize dg-company-statistics."
+  (setq dg-company-statistics--scores
+        (make-hash-table :test #'equal :size dg-company-statistics-size))
+  (setq dg-company-statistics--log (make-vector dg-company-statistics-size nil)
+        dg-company-statistics--index 0))
 
-(defun company-statistics--initialized-p ()
-  (hash-table-p company-statistics--scores))
+(defun dg-company-statistics--initialized-p ()
+  (hash-table-p dg-company-statistics--scores))
 
-(defun company-statistics--log-resize (_option new-size)
-  (when (company-statistics--initialized-p)
+(defun dg-company-statistics--log-resize (_option new-size)
+  (when (dg-company-statistics--initialized-p)
     ;; hash scoresheet auto-resizes, but log does not
     (let ((new-hist (make-vector new-size nil))
           ;; use actual length, to also work for freshly restored stats
-          (company-statistics-size (length company-statistics--log)))
+          (dg-company-statistics-size (length dg-company-statistics--log)))
       ;; copy newest entries (possibly nil) to new-hist
-      (dolist (i (number-sequence 0 (1- (min new-size company-statistics-size))))
-        (let ((old-i (mod (+ (- company-statistics--index new-size) i)
-                          company-statistics-size)))
-          (aset new-hist i (aref company-statistics--log old-i))))
+      (dolist (i (number-sequence 0 (1- (min new-size dg-company-statistics-size))))
+        (let ((old-i (mod (+ (- dg-company-statistics--index new-size) i)
+                          dg-company-statistics-size)))
+          (aset new-hist i (aref dg-company-statistics--log old-i))))
       ;; remove discarded log entry (when shrinking) from scores
-      (when (< new-size company-statistics-size)
+      (when (< new-size dg-company-statistics-size)
         (dolist (i (number-sequence
-                    company-statistics--index
-                    (+ company-statistics-size
-                       company-statistics--index
+                    dg-company-statistics--index
+                    (+ dg-company-statistics-size
+                       dg-company-statistics--index
                        (1- new-size))))
-          (company-statistics--log-revert (mod i company-statistics-size))))
-      (setq company-statistics--log new-hist)
-      (setq company-statistics--index (if (<= new-size company-statistics-size)
+          (dg-company-statistics--log-revert (mod i dg-company-statistics-size))))
+      (setq dg-company-statistics--log new-hist)
+      (setq dg-company-statistics--index (if (<= new-size dg-company-statistics-size)
                                           0
-                                        company-statistics-size))))
-  (setq company-statistics-size new-size))
+                                        dg-company-statistics-size))))
+  (setq dg-company-statistics-size new-size))
 
-(defun company-statistics--save ()
+(defun dg-company-statistics--save ()
   "Save statistics."
   (with-temp-buffer
     (set-buffer-multibyte nil)
@@ -167,50 +167,50 @@ during the evaluation of `company-statistics-score-calc-expr'.")
        (format
         "%S"
         `(setq
-          company-statistics--scores ,company-statistics--scores
-          company-statistics--log ,company-statistics--log
-          company-statistics--index ,company-statistics--index))
+          dg-company-statistics--scores ,dg-company-statistics--scores
+          dg-company-statistics--log ,dg-company-statistics--log
+          dg-company-statistics--index ,dg-company-statistics--index))
        'utf-8 nil (current-buffer))
       (let ((coding-system-for-write 'binary))
-        (write-region nil nil company-statistics-file)))))
+        (write-region nil nil dg-company-statistics-file)))))
 
-(defun company-statistics--maybe-save ()
-  (when (and (company-statistics--initialized-p)
-             company-statistics-auto-save)
-    (company-statistics--save)))
+(defun dg-company-statistics--maybe-save ()
+  (when (and (dg-company-statistics--initialized-p)
+             dg-company-statistics-auto-save)
+    (dg-company-statistics--save)))
 
-(defun company-statistics--load ()
+(defun dg-company-statistics--load ()
   "Restore statistics."
-  (load company-statistics-file 'noerror nil 'nosuffix))
+  (load dg-company-statistics-file 'noerror nil 'nosuffix))
 
 ;; score calculation for insert/retrieval --- can be changed on-the-fly
 
-(defvar company-statistics--context nil
+(defvar dg-company-statistics--context nil
   "Current completion context, a list of entries searched using `assoc'.")
 
-(defvar company-statistics--override-context nil
+(defvar dg-company-statistics--override-context nil
   "Optional context intended to be manually set for debugging/testing purposes.")
 
-;; NOTE: There seem to be cases where company-statistics--context will not be
+;; NOTE: There seem to be cases where dg-company-statistics--context will not be
 ;; updated in time and the score calc will be on the basis of an older context.
 ;; Therefore, we'll use a function to access it, which will recapture it if it
 ;; looks like an update is needed.
-(defvar company-statistics--previous-context-id nil)
+(defvar dg-company-statistics--previous-context-id nil)
 
-(defun company-statistics--get-context-current-id ()
+(defun dg-company-statistics--get-context-current-id ()
   "Identifies the position with which the current context is associated."
   (point))
 
-(defun company-statistics--get-context (&optional force-refresh)
-  (or company-statistics--override-context
-      (let ((curid (company-statistics--get-context-current-id)))
+(defun dg-company-statistics--get-context (&optional force-refresh)
+  (or dg-company-statistics--override-context
+      (let ((curid (dg-company-statistics--get-context-current-id)))
         (when (or force-refresh
-                  (not (equal curid company-statistics--previous-context-id)))
-          (company-statistics-capture-context)
-          (setq company-statistics--previous-context-id curid))
-        company-statistics--context)))
+                  (not (equal curid dg-company-statistics--previous-context-id)))
+          (dg-company-statistics-capture-context)
+          (setq dg-company-statistics--previous-context-id curid))
+        dg-company-statistics--context)))
 
-(defun company-statistics--last-keyword-ctx ()
+(defun dg-company-statistics--last-keyword-ctx ()
   "Return last keyword, ie, text of region fontified with the
 font-lock-keyword-face up to point, or nil."
   (let ((face-pos (point)))
@@ -227,7 +227,7 @@ font-lock-keyword-face up to point, or nil."
        (previous-single-property-change face-pos 'face nil (point-min))
        face-pos))))
 
-(defun company-statistics--parent-symbol-ctx ()
+(defun dg-company-statistics--parent-symbol-ctx ()
   "Return symbol immediately preceding current completion prefix, or nil.
 May be separated by punctuation, but not by whitespace."
   ;; expects to be at start of company-prefix; little sense for lisps
@@ -236,9 +236,9 @@ May be separated by punctuation, but not by whitespace."
                        (substring-no-properties (symbol-name (symbol-at-point)))))))
     preceding))
 
-(defun company-statistics-score-change (_cand)
-  "Score for candidate determined using the current `company-statistics-features'."
-  (let* ((context (company-statistics--get-context))
+(defun dg-company-statistics-score-change (_cand)
+  "Score for candidate determined using the current `dg-company-statistics-features'."
+  (let* ((context (dg-company-statistics--get-context))
          (changed (mapcar (lambda (feat)
                             (let* ((key (car feat))
                                    (cfg (cdr feat))
@@ -247,10 +247,10 @@ May be separated by punctuation, but not by whitespace."
                                    (ctx (assoc key context)))
                               (when (and ctx (> incr 0))
                                 (cons ctx incr))))
-                          company-statistics-features)))
+                          dg-company-statistics-features)))
     (delq nil changed)))
 
-(defun company-statistics-capture-context (&optional _manual)
+(defun dg-company-statistics-capture-context (&optional _manual)
   (save-excursion
     (backward-char (length company-prefix))
     (let* ((ctx (mapcar (lambda (feat)
@@ -259,18 +259,18 @@ May be separated by punctuation, but not by whitespace."
                                  (value (eval get-ctx-form)))
                             (when value
                               (list key value))))
-                        company-statistics-features))
+                        dg-company-statistics-features))
            (ctx-no-nils (delq nil ctx)))
-      (setq company-statistics--context ctx-no-nils)
+      (setq dg-company-statistics--context ctx-no-nils)
       ctx-no-nils)))
 
-(defun company-statistics-score-calc (cand &optional using-company-prefix)
+(defun dg-company-statistics-score-calc (cand &optional using-company-prefix)
   (setq using-company-prefix (or using-company-prefix company-prefix))
   (let* ((company-prefix using-company-prefix)
-         (context (company-statistics--get-context))
-         (scores (gethash cand company-statistics--scores))
+         (context (dg-company-statistics--get-context))
+         (scores (gethash cand dg-company-statistics--scores))
          (cand-score 0))
-    (dolist (f company-statistics-features)
+    (dolist (f dg-company-statistics-features)
       (let* ((feat-sym (car f))
              (feat-config (cdr f))
              (feat-weight (or (cdr (assoc :weight feat-config)) 1))
@@ -284,7 +284,7 @@ May be separated by punctuation, but not by whitespace."
 
 ;; score manipulation in one place --- know about hash value alist structure
 
-(defun company-statistics--alist-update (alist updates merger &optional filter)
+(defun dg-company-statistics--alist-update (alist updates merger &optional filter)
   "Return new alist with conses from ALIST.  Their cdrs are updated
 to (merger cdr update-cdr) if the UPDATES alist contains an entry with an
 equal-matching car.  If FILTER called with the result is non-nil, remove
@@ -305,66 +305,66 @@ one.  ALIST structure and cdrs may be changed!"
      updates)
     (nconc updated new)))
 
-(defun company-statistics--scores-add (cand score-updates)
+(defun dg-company-statistics--scores-add (cand score-updates)
   (puthash cand
-           (company-statistics--alist-update
-            (gethash cand company-statistics--scores)
+           (dg-company-statistics--alist-update
+            (gethash cand dg-company-statistics--scores)
             score-updates
             #'+)
-           company-statistics--scores))
+           dg-company-statistics--scores))
 
-(defun company-statistics--log-revert (&optional index)
+(defun dg-company-statistics--log-revert (&optional index)
   "Revert score updates for log entry.  INDEX defaults to
-`company-statistics--index'."
+`dg-company-statistics--index'."
   (let ((hist-entry
-         (aref company-statistics--log
-               (or index company-statistics--index))))
+         (aref dg-company-statistics--log
+               (or index dg-company-statistics--index))))
     (when hist-entry                    ;ignore nil entry
       (let* ((cand (car hist-entry))
              (score-updates (cdr hist-entry))
              (new-scores
-              (company-statistics--alist-update
-               (gethash cand company-statistics--scores)
+              (dg-company-statistics--alist-update
+               (gethash cand dg-company-statistics--scores)
                score-updates
                #'-
                #'zerop)))
         (if new-scores                    ;sth left
-            (puthash cand new-scores company-statistics--scores)
-          (remhash cand company-statistics--scores))))))
+            (puthash cand new-scores dg-company-statistics--scores)
+          (remhash cand dg-company-statistics--scores))))))
 
-(defun company-statistics--log-store (result score-updates)
+(defun dg-company-statistics--log-store (result score-updates)
   "Insert/overwrite result and associated score updates."
-  (aset company-statistics--log company-statistics--index
+  (aset dg-company-statistics--log dg-company-statistics--index
         (cons result score-updates))
-  (setq company-statistics--index
-        (mod (1+ company-statistics--index) company-statistics-size)))
+  (setq dg-company-statistics--index
+        (mod (1+ dg-company-statistics--index) dg-company-statistics-size)))
 
 ;; core functions: updater, actual sorting transformer, minor-mode
 
-(defun company-statistics--start (manual)
-  (funcall company-statistics-capture-context manual))
+(defun dg-company-statistics--start (manual)
+  (funcall dg-company-statistics-capture-context manual))
 
-(defun company-statistics--finished (result)
+(defun dg-company-statistics--finished (result)
   "After completion, update scores and log."
-  (let* ((score-updates (funcall company-statistics-score-change result))
+  (let* ((score-updates (funcall dg-company-statistics-score-change result))
          (result (substring-no-properties result)))
-    (company-statistics--scores-add result score-updates)
-    (company-statistics--log-revert)
-    (company-statistics--log-store result score-updates)))
+    (dg-company-statistics--scores-add result score-updates)
+    (dg-company-statistics--log-revert)
+    (dg-company-statistics--log-store result score-updates)))
 
-(defun company-sort-by-statistics (candidates)
+(defun dg-company-statistics-sort-by-statistics (candidates)
   "Sort candidates by historical statistics.  Stable sort, so order is only
 changed for candidates distinguishable by score."
   (setq candidates
         (sort candidates
               (lambda (cand1 cand2)
-                (>  (funcall company-statistics-score-calc cand1)
-                    (funcall company-statistics-score-calc cand2))))))
+                (>  (funcall dg-company-statistics-score-calc cand1)
+                    (funcall dg-company-statistics-score-calc cand2))))))
 
-(defun company-statistics--get-scores-alist (&optional scores-hash)
+(defun dg-company-statistics--get-scores-alist (&optional scores-hash)
   "Returns the scores hash table as an alist. This function is intended to aid
 debugging by making the scores easier to inspect."
-  (setq scores-hash (or scores-hash company-statistics--scores))
+  (setq scores-hash (or scores-hash dg-company-statistics--scores))
   (let ((scores-alist nil))
     (and scores-hash (maphash (lambda (key val)
                                 (add-to-list 'scores-alist `(,key . ,val)))
@@ -372,40 +372,40 @@ debugging by making the scores easier to inspect."
     scores-alist))
 
 ;;;###autoload
-(define-minor-mode company-statistics-mode
+(define-minor-mode dg-company-statistics-mode
   "Statistical sorting for company-mode.  Ranks completion candidates by
 the frequency with which they have been chosen in recent (as given by
-`company-statistics-size') history.
+`dg-company-statistics-size') history.
 
 Turning this mode on and off preserves the statistics.  They are also
 preserved automatically between Emacs sessions in the default
 configuration.  You can customize this behavior with
-`company-statistics-auto-save', `company-statistics-auto-restore' and
-`company-statistics-file'."
+`dg-company-statistics-auto-save', `dg-company-statistics-auto-restore' and
+`dg-company-statistics-file'."
   nil nil nil
   :global t
-  (if company-statistics-mode
+  (if dg-company-statistics-mode
       (progn
-        (unless (company-statistics--initialized-p)
-          (if (and company-statistics-auto-restore
-                   (company-statistics--load))
+        (unless (dg-company-statistics--initialized-p)
+          (if (and dg-company-statistics-auto-restore
+                   (dg-company-statistics--load))
               ;; maybe of different size
-              (company-statistics--log-resize nil company-statistics-size)
-            (company-statistics--init)))
+              (dg-company-statistics--log-resize nil dg-company-statistics-size)
+            (dg-company-statistics--init)))
         (add-to-list 'company-transformers
-                     'company-sort-by-statistics 'append)
+                     'dg-company-statistics-sort-by-statistics 'append)
         (add-hook 'company-completion-started-hook
-                  'company-statistics--start)
+                  'dg-company-statistics--start)
         (add-hook 'company-completion-finished-hook
-                  'company-statistics--finished))
+                  'dg-company-statistics--finished))
     (setq company-transformers
-          (delq 'company-sort-by-statistics company-transformers))
+          (delq 'dg-company-statistics-sort-by-statistics company-transformers))
     (remove-hook 'company-completion-started-hook
-                 'company-statistics--start)
+                 'dg-company-statistics--start)
     (remove-hook 'company-completion-finished-hook
-                 'company-statistics--finished)))
+                 'dg-company-statistics--finished)))
 
-(add-hook 'kill-emacs-hook 'company-statistics--maybe-save)
+(add-hook 'kill-emacs-hook 'dg-company-statistics--maybe-save)
 
-(provide 'company-statistics)
-;;; company-statistics.el ends here
+(provide 'dg-company-statistics)
+;;; dg-company-statistics.el ends here

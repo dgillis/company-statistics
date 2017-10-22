@@ -1,4 +1,4 @@
-;;; company-statistics-tests.el --- company-statistics tests  -*- lexical-binding: t -*-
+;;; dg-company-statistics-tests.el --- dg-company-statistics tests  -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2014-2015  Free Software Foundation, Inc.
 
@@ -21,18 +21,18 @@
 
 
 ;;; Commentary:
-;; emacs -batch -L . -L ../company-mode/ -l ert -l company-statistics-tests.el  -f ert-run-tests-batch-and-exit
+;; emacs -batch -L . -L ../company-mode/ -l ert -l dg-company-statistics-tests.el  -f ert-run-tests-batch-and-exit
 
 ;;; Code:
 
 (require 'ert)
 
-(require 'company-statistics)
-(require 'company-statistics-compat)
-(setq company-statistics-auto-restore nil
-      company-statistics-auto-save nil)
+(require 'dg-company-statistics)
+(require 'dg-company-statistics-compat)
+(setq dg-company-statistics-auto-restore nil
+      dg-company-statistics-auto-save nil)
 
-(company-statistics-mode)
+(dg-company-statistics-mode)
 
 ;;; Core
 
@@ -75,48 +75,48 @@ V2 (starting at index I2) satisfy the binary predicate PRED, default
   "Set up a completion history."
   `(unwind-protect
        ;; some setup to get a completion history
-       (let ((company-statistics-size 5)
-             (company-statistics-features company-statistics-default-features-heavy))
-         (company-statistics--init)
-         (let ((company-statistics--override-context
+       (let ((dg-company-statistics-size 5)
+             (dg-company-statistics-features dg-company-statistics-default-features-heavy))
+         (dg-company-statistics--init)
+         (let ((dg-company-statistics--override-context
                 '((global t)
                   (major-mode foo-mode)
                   (keyword "if")
                   (symbol "parent")
                   (file "foo-file"))))
-           (company-statistics--finished "foo"))
-         (let ((company-statistics--override-context
+           (dg-company-statistics--finished "foo"))
+         (let ((dg-company-statistics--override-context
                 '((global t)
                   (major-mode foo-mode)
                   (symbol "statistics")
                   (file "bar-file"))))
-           (company-statistics--finished "bar"))
-         (let ((company-statistics--override-context
+           (dg-company-statistics--finished "bar"))
+         (let ((dg-company-statistics--override-context
                 '((global t)
                   (major-mode baz-mode)
                   (keyword "unless")
                   (symbol "company"))))
-           (company-statistics--finished "baz"))
-         (let ((company-statistics--override-context
+           (dg-company-statistics--finished "baz"))
+         (let ((dg-company-statistics--override-context
                 '((global t)
                   (major-mode baz-mode)
                   (keyword "when")
                   (file "quux-file"))))
-           (company-statistics--finished "quux"))
+           (dg-company-statistics--finished "quux"))
          ,@body)
      ;; tear down to clean slate
-     (company-statistics--init)))
+     (dg-company-statistics--init)))
 
 (defmacro cs-persistence-fixture (&rest body)
   "Check and prepare for persistence, clean up."
-  `(let ((company-statistics-file "./cs-test-tmp"))
-     (when (and (file-exists-p company-statistics-file)
-                (file-writable-p company-statistics-file))
+  `(let ((dg-company-statistics-file "./cs-test-tmp"))
+     (when (and (file-exists-p dg-company-statistics-file)
+                (file-writable-p dg-company-statistics-file))
        (unwind-protect
            (progn ,@body)
          ;; clean up file system
-         (when (file-exists-p company-statistics-file)
-           (delete-file company-statistics-file))))))
+         (when (file-exists-p dg-company-statistics-file)
+           (delete-file dg-company-statistics-file))))))
 
 ;; tests themselves
 
@@ -124,62 +124,62 @@ V2 (starting at index I2) satisfy the binary predicate PRED, default
   "Test history-resize for shrinking and enlarging."
   (cs-fixture
    ;; resize several times
-   (let ((cs-scores (copy-tree company-statistics--scores))
-         (cs-history (copy-tree company-statistics--log 'vecp)))
-     (company-statistics--log-resize 'dummy 10)
+   (let ((cs-scores (copy-tree dg-company-statistics--scores))
+         (cs-history (copy-tree dg-company-statistics--log 'vecp)))
+     (dg-company-statistics--log-resize 'dummy 10)
      ;; scores unaffected?
-     (should (my/hash-compare company-statistics--scores cs-scores))
+     (should (my/hash-compare dg-company-statistics--scores cs-scores))
      ;; find all 4 old entries
-     (should (my/vector-slice-compare company-statistics--log
-                                      (- company-statistics--index 4)
+     (should (my/vector-slice-compare dg-company-statistics--log
+                                      (- dg-company-statistics--index 4)
                                       cs-history 0
                                       4))
      ;; index at "old-size"
-     (should (equal company-statistics--index 5))
-     (company-statistics--log-resize 'dummy 5)
-     (should (my/hash-compare company-statistics--scores cs-scores))
-     (should (my/vector-slice-compare company-statistics--log
-                                      (- company-statistics--index 4)
+     (should (equal dg-company-statistics--index 5))
+     (dg-company-statistics--log-resize 'dummy 5)
+     (should (my/hash-compare dg-company-statistics--scores cs-scores))
+     (should (my/vector-slice-compare dg-company-statistics--log
+                                      (- dg-company-statistics--index 4)
                                       cs-history 0
                                       4))
      ;; after shrink: index at 0
-     (should (equal company-statistics--index 0))
+     (should (equal dg-company-statistics--index 0))
      ;; lose oldest entry "foo"
-     (company-statistics--log-resize 'dummy 3)
+     (dg-company-statistics--log-resize 'dummy 3)
      ;; score should be removed
-     (should-not (gethash "foo" company-statistics--scores))
+     (should-not (gethash "foo" dg-company-statistics--scores))
      ;; find *3* latest entries
-     (should (my/vector-slice-compare company-statistics--log
-                                      (- company-statistics--index 3)
+     (should (my/vector-slice-compare dg-company-statistics--log
+                                      (- dg-company-statistics--index 3)
                                       cs-history 1
                                       3))
-     (should (equal company-statistics--index 0)))))
+     (should (equal dg-company-statistics--index 0)))))
 
 (ert-deftest c-s-persistence ()
   "Test that all statistics are properly saved and restored."
   (cs-persistence-fixture
    (cs-fixture
-    (let ((cs-scores (copy-sequence company-statistics--scores))
-          (cs-history (copy-sequence company-statistics--log))
-          (cs-index company-statistics--index))
-      (company-statistics--save)
-      (company-statistics--init)        ;hence shallow copies suffice
-      (company-statistics--load)
-      ;; (should (equal company-statistics--scores cs-scores))
-      (should (my/hash-compare company-statistics--scores cs-scores))
-      (should (equal company-statistics--log cs-history))
-      (should (equal company-statistics--index cs-index))))))
+    (let ((cs-scores (copy-sequence dg-company-statistics--scores))
+          (cs-history (copy-sequence dg-company-statistics--log))
+          (cs-index dg-company-statistics--index))
+      (dg-company-statistics--save)
+      (dg-company-statistics--init)        ;hence shallow copies suffice
+      (dg-company-statistics--load)
+      ;; (should (equal dg-company-statistics--scores cs-scores))
+      (should (my/hash-compare dg-company-statistics--scores cs-scores))
+      (should (equal dg-company-statistics--log cs-history))
+      (should (equal dg-company-statistics--index cs-index))))))
 
 ;; (ert-deftest c-s-score-change-heavy ()
 ;;   "Test a few things about the heavy score updates."
 ;;   (let ((major-mode 'foobar-mode))
-;;     (should (equal (company-statistics-score-change-heavy "dummy")
+;;     (should (equal (dg-company-statistics-score-change-heavy "dummy")
 ;;                    '((nil . 1) (foobar-mode . 1))))
-;;     (let ((company-statistics--override-context
+;;     (let ((dg-company-statistics--override-context
 ;;            '((keyword "kwd")
 ;;              nil                        ;deliberately omit parent symbol
 ;;              (file "test-file.XYZ"))))
-;;       (should (equal (company-statistics-score-change-heavy "dummy")
+;;       (should (equal (dg-company-statistics-score-change-heavy "dummy")
 ;;                      '((nil . 1) (foobar-mode . 1)
 ;;                        ((keyword "kwd") . 1)
 ;;                        ((file "test-file.XYZ") . 1)))))))
@@ -187,81 +187,81 @@ V2 (starting at index I2) satisfy the binary predicate PRED, default
 (ert-deftest c-s-score-calc-heavy ()
   "Test heavy score calculation."
   (cs-fixture
-   (let ((company-statistics--override-context
+   (let ((dg-company-statistics--override-context
           '((global t)
             (major-mode foo-mode)
             (keyword nil)
             (symbol "company")
             (file "foo-file"))))
-     (should (eq (company-statistics-score-calc-heavy "dummy") 0))
-     (should (eq (company-statistics-score-calc-heavy "foo") 3))
-     (should (eq (company-statistics-score-calc-heavy "bar") 2))
-     (should (eq (company-statistics-score-calc-heavy "baz") 2))
-     (should (eq (company-statistics-score-calc-heavy "quux") 1)))
-   (let ((company-statistics--override-context
+     (should (eq (dg-company-statistics-score-calc-heavy "dummy") 0))
+     (should (eq (dg-company-statistics-score-calc-heavy "foo") 3))
+     (should (eq (dg-company-statistics-score-calc-heavy "bar") 2))
+     (should (eq (dg-company-statistics-score-calc-heavy "baz") 2))
+     (should (eq (dg-company-statistics-score-calc-heavy "quux") 1)))
+   (let ((dg-company-statistics--override-context
           '((global t)
             (major-mode foo-mode)
             (keyword "unless")
             (symbol "parent")
             (file "quux-file"))))
-     (should (eq (company-statistics-score-calc-heavy "dummy") 0))
-     (should (eq (company-statistics-score-calc-heavy "foo") 3))
-     (should (eq (company-statistics-score-calc-heavy "bar") 2))
-     (should (eq (company-statistics-score-calc-heavy "baz") 2))
-     (should (eq (company-statistics-score-calc-heavy "quux") 2)))
-   (let ((company-statistics--override-context
+     (should (eq (dg-company-statistics-score-calc-heavy "dummy") 0))
+     (should (eq (dg-company-statistics-score-calc-heavy "foo") 3))
+     (should (eq (dg-company-statistics-score-calc-heavy "bar") 2))
+     (should (eq (dg-company-statistics-score-calc-heavy "baz") 2))
+     (should (eq (dg-company-statistics-score-calc-heavy "quux") 2)))
+   (let ((dg-company-statistics--override-context
           '((global t)
             (major-mode baz-mode)
             (keyword "when")
             (symbol nil)
             (file "baz-file"))))
-     (should (eq (company-statistics-score-calc-heavy "dummy") 0))
-     (should (eq (company-statistics-score-calc-heavy "foo") 1))
-     (should (eq (company-statistics-score-calc-heavy "bar") 1))
-     (should (eq (company-statistics-score-calc-heavy "baz") 2))
-     (should (eq (company-statistics-score-calc-heavy "quux") 3)))
-   (let ((company-statistics--override-context
+     (should (eq (dg-company-statistics-score-calc-heavy "dummy") 0))
+     (should (eq (dg-company-statistics-score-calc-heavy "foo") 1))
+     (should (eq (dg-company-statistics-score-calc-heavy "bar") 1))
+     (should (eq (dg-company-statistics-score-calc-heavy "baz") 2))
+     (should (eq (dg-company-statistics-score-calc-heavy "quux") 3)))
+   (let ((dg-company-statistics--override-context
           '((global t)
             (major-mode baz-mode)
             (keyword "if")
             (symbol "statistics")
             (file "quux-file"))))
-     (should (eq (company-statistics-score-calc-heavy "dummy") 0))
-     (should (eq (company-statistics-score-calc-heavy "foo") 2))
-     (should (eq (company-statistics-score-calc-heavy "bar") 2))
-     (should (eq (company-statistics-score-calc-heavy "baz") 2))
-     (should (eq (company-statistics-score-calc-heavy "quux") 3)))))
+     (should (eq (dg-company-statistics-score-calc-heavy "dummy") 0))
+     (should (eq (dg-company-statistics-score-calc-heavy "foo") 2))
+     (should (eq (dg-company-statistics-score-calc-heavy "bar") 2))
+     (should (eq (dg-company-statistics-score-calc-heavy "baz") 2))
+     (should (eq (dg-company-statistics-score-calc-heavy "quux") 3)))))
 
 (ert-deftest c-s-alist-update ()
   "Test central helper function for context/score alist update."
   (let ((alist '((nil . 0) ("a" . 1) ("b" . 2) ("d" . some-symbol)))
         (updates '(("a" . 1) ("c" . 3))))
-    (should (equal (company-statistics--alist-update alist updates '+)
+    (should (equal (dg-company-statistics--alist-update alist updates '+)
                    '((nil . 0) ("a" . 2) ("b" . 2) ("d" . some-symbol) ("c" . 3)))))
   ;; filter only checks on merged, so nil entry remains, and symbol should not pose a problem:
   (let ((alist '((nil . 0) ("a" . 1) ("b" . 2) ("d" . some-symbol)))
         (updates '(("a" . 1) ("c" . 3))))
-    (should (equal (company-statistics--alist-update alist updates '+ 'zerop)
+    (should (equal (dg-company-statistics--alist-update alist updates '+ 'zerop)
                    '((nil . 0) ("a" . 2) ("b" . 2) ("d" . some-symbol) ("c" . 3)))))
   (let ((alist '((nil . 0) ("a" . 1) ("b" . 2) ("d" . some-symbol)))
         (updates '(("a" . 1) ("c" . 3))))
-    (should (equal (company-statistics--alist-update alist updates '-)
+    (should (equal (dg-company-statistics--alist-update alist updates '-)
                    '((nil . 0) ("a" . 0) ("b" . 2) ("d" . some-symbol) ("c" . 3)))))
   (let ((alist '((nil . 0) ("a" . 1) ("b" . 2) ("d" . some-symbol)))
         (updates '(("a" . 1) ("c" . 3))))
-    (should (equal (company-statistics--alist-update alist updates '- 'zerop)
+    (should (equal (dg-company-statistics--alist-update alist updates '- 'zerop)
                    '((nil . 0) ("b" . 2) ("d" . some-symbol) ("c" . 3))))))
 
 (ert-deftest c-s-scores-add ()
   "Test adding scores."
   (cs-fixture
    ;; new entry
-   (company-statistics--scores-add "zufpah" '(((global t) . 27)))
-   (should (equal (gethash "zufpah" company-statistics--scores)
+   (dg-company-statistics--scores-add "zufpah" '(((global t) . 27)))
+   (should (equal (gethash "zufpah" dg-company-statistics--scores)
                   '(((global t) . 27))))
    ;; update existing entry
-   (company-statistics--scores-add "foo" '(((global t) . 2)))
-   (let ((h (gethash "foo" company-statistics--scores)))
+   (dg-company-statistics--scores-add "foo" '(((global t) . 2)))
+   (let ((h (gethash "foo" dg-company-statistics--scores)))
      (should (equal (assoc '(global t) h) '((global t) . 3)))
      (should (equal (assoc '(major-mode foo-mode) h) '((major-mode foo-mode) . 1))))))
 
@@ -270,54 +270,54 @@ V2 (starting at index I2) satisfy the binary predicate PRED, default
   ;; deep copies throughout!
   (cs-fixture
    ;; pointing to nil, should not change anything
-   (let ((cs-scores (copy-tree company-statistics--scores))
-         (cs-history (copy-tree company-statistics--log 'vecp))
-         (cs-index company-statistics--index))
-     (company-statistics--log-revert)
-     (should (my/hash-compare company-statistics--scores cs-scores))
-     (should (equal company-statistics--log cs-history))
-     (should (equal company-statistics--index cs-index))))
+   (let ((cs-scores (copy-tree dg-company-statistics--scores))
+         (cs-history (copy-tree dg-company-statistics--log 'vecp))
+         (cs-index dg-company-statistics--index))
+     (dg-company-statistics--log-revert)
+     (should (my/hash-compare dg-company-statistics--scores cs-scores))
+     (should (equal dg-company-statistics--log cs-history))
+     (should (equal dg-company-statistics--index cs-index))))
   (cs-fixture
    ;; remove existing item 2: should vanish from scores
-   (let ((cs-scores (copy-tree company-statistics--scores))
-         (cs-history (copy-tree company-statistics--log 'vecp))
-         (cs-index company-statistics--index))
-     (company-statistics--log-revert 2)
-     (should-not (gethash "baz" company-statistics--scores))
-     (should (equal company-statistics--log cs-history))
-     (should (equal company-statistics--index cs-index))))
+   (let ((cs-scores (copy-tree dg-company-statistics--scores))
+         (cs-history (copy-tree dg-company-statistics--log 'vecp))
+         (cs-index dg-company-statistics--index))
+     (dg-company-statistics--log-revert 2)
+     (should-not (gethash "baz" dg-company-statistics--scores))
+     (should (equal dg-company-statistics--log cs-history))
+     (should (equal dg-company-statistics--index cs-index))))
   (cs-fixture
    ;; remove just inserted item 3 (scores should be same)
-   (let ((cs-scores (copy-tree company-statistics--scores))
-         (cs-history (copy-tree company-statistics--log 'vecp))
-         (cs-index company-statistics--index))
-     (let ((company-statistics--override-context
+   (let ((cs-scores (copy-tree dg-company-statistics--scores))
+         (cs-history (copy-tree dg-company-statistics--log 'vecp))
+         (cs-index dg-company-statistics--index))
+     (let ((dg-company-statistics--override-context
             '((global t)
               (major-mode extra-mode))))
-       (company-statistics--finished "foo")) ;adds to scores, history, index
-     (company-statistics--log-revert 4) ;reverts scores only, so...
+       (dg-company-statistics--finished "foo")) ;adds to scores, history, index
+     (dg-company-statistics--log-revert 4) ;reverts scores only, so...
      (aset cs-history 4 `("foo" ((major-mode extra-mode) . 1) ((global t) . 1)))
-     (setq cs-index (mod (1+ cs-index) company-statistics-size))
-     (should (my/hash-compare company-statistics--scores cs-scores))
-     (should (equal company-statistics--log cs-history))
-     (should (equal company-statistics--index cs-index)))))
+     (setq cs-index (mod (1+ cs-index) dg-company-statistics-size))
+     (should (my/hash-compare dg-company-statistics--scores cs-scores))
+     (should (equal dg-company-statistics--log cs-history))
+     (should (equal dg-company-statistics--index cs-index)))))
 
 (ert-deftest c-s-history-store ()
   "Test insert/overwrite of history item."
   (cs-fixture
-   (let ((cs-history (copy-tree company-statistics--log 'vecp))
-         (cs-index company-statistics--index))
+   (let ((cs-history (copy-tree dg-company-statistics--log 'vecp))
+         (cs-index dg-company-statistics--index))
      ;; only changes history and index
-     (company-statistics--log-store "foo" '((nil . 27)))
+     (dg-company-statistics--log-store "foo" '((nil . 27)))
      (aset cs-history cs-index '("foo" (nil . 27)))
      (setq cs-index 0)                  ;wraps around
-     (should (equal company-statistics--log cs-history))
-     (should (equal company-statistics--index cs-index))
+     (should (equal dg-company-statistics--log cs-history))
+     (should (equal dg-company-statistics--index cs-index))
      ;; now wrap around to overwrite an entry
-     (company-statistics--log-store "tagyok" '((bla . 42)))
+     (dg-company-statistics--log-store "tagyok" '((bla . 42)))
      (aset cs-history cs-index '("tagyok" (bla . 42)))
      (setq cs-index 1)
-     (should (equal company-statistics--log cs-history))
-     (should (equal company-statistics--index cs-index)))))
+     (should (equal dg-company-statistics--log cs-history))
+     (should (equal dg-company-statistics--index cs-index)))))
 
 ;; test finished and sort functions?  if the above is ok, they are trivial...
