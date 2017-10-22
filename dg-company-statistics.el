@@ -75,6 +75,10 @@ As this is a global cache, making it too small defeats the purpose."
 not been used before."
   :type 'boolean)
 
+(defcustom dg-company-statistics-features nil
+  ""
+  :type 'list)
+
 (defcustom dg-company-statistics-capture-context #'dg-company-statistics-capture-context
   "Function called with single argument (t if completion started manually).
 This is the place to store any context information for a completion run."
@@ -93,7 +97,9 @@ eg, on the current context, it should evaluate to the candidate's score (a
 number)."
   :type 'function)
 
-(defvar dg-company-statistics-features nil)
+(defcustom dg-company-statistics-score-reducer #'dg-company-statistics-default-score-reducer
+  "Function called with completion candidate an a list containing the score components."
+  :type 'function)
 
 (defconst dg-company-statistics-default-features-heavy
   '((keyword (:get-context . (dg-company-statistics--last-keyword-ctx)))
@@ -285,7 +291,6 @@ score information for each feature."
     (dolist (f dg-company-statistics-features)
       (let* ((feat-sym (car f))
              (feat-config (cdr f))
-             (feat-weight (or (cdr (assoc :weight feat-config)) 1))
              (feat-value-assoc (assoc feat-sym context))
              (feat-value (cadr feat-value-assoc))
              (feat-score-key (list feat-sym feat-value))
@@ -306,13 +311,20 @@ score information for each feature."
     retval))
 
 (defun dg-company-statistics-score-calc (cand &optional using-company-prefix)
-  (let ((retval 0)
-        (score-components (dg-company-statistics--score-calc-components
+  (let ((score-components (dg-company-statistics--score-calc-components
                            cand using-company-prefix)))
+    (funcall dg-company-statistics-score-reducer cand score-components)))
+
+(defun dg-company-statistics-default-score-reducer (cand score-components)
+  (let ((score 0))
     (dolist (comp score-components)
-      (let ((comp-score (or (cdr (assoc :score comp)))))
-        (setq retval (+ retval (or comp-score 0)))))
-    retval))
+      (let* ((comp-score (or (cdr (assoc :score comp))))
+             (comp-config (cdr (assoc :config comp)))
+             (comp-weight (or (cdr (assoc :weight comp-config)) 1.0))
+             (comp-percent-score (or (cdr (assoc :percent comp))))
+             (comp-weighted-percent-score (* comp-weight comp-percent-score)))
+        (setq score (+ score comp-weighted-percent-score))))
+    score))
 
 ;; score manipulation in one place --- know about hash value alist structure
 
