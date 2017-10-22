@@ -247,8 +247,17 @@ May be separated by punctuation, but not by whitespace."
                                    (ctx (assoc key context)))
                               (when (and ctx (> incr 0))
                                 (cons ctx incr))))
-                          dg-company-statistics-features)))
-    (delq nil changed)))
+                          dg-company-statistics-features))
+         (changed-no-nils (delq nil changed))
+         (changed-totals (mapcar (lambda (z)
+                                   (let* ((pair (car z))
+                                          (name (car pair))
+                                          (incr (cdr z))
+                                          (name-total-key
+                                           (list name 'TOTAL)))
+                                     (cons name-total-key incr)))
+                                 changed-no-nils)))
+    (append changed-no-nils changed-totals)))
 
 (defun dg-company-statistics-capture-context (&optional _manual)
   (save-excursion
@@ -264,12 +273,13 @@ May be separated by punctuation, but not by whitespace."
       (setq dg-company-statistics--context ctx-no-nils)
       ctx-no-nils)))
 
-(defun dg-company-statistics-score-calc (cand &optional using-company-prefix)
+(defun dg-company-statistics--score-calc-components (cand &optional using-company-prefix)
   (setq using-company-prefix (or using-company-prefix company-prefix))
   (let* ((company-prefix using-company-prefix)
          (context (dg-company-statistics--get-context))
          (scores (gethash cand dg-company-statistics--scores))
-         (cand-score 0))
+         (cand-score 0)
+         (retval nil))
     (dolist (f dg-company-statistics-features)
       (let* ((feat-sym (car f))
              (feat-config (cdr f))
@@ -277,10 +287,30 @@ May be separated by punctuation, but not by whitespace."
              (feat-value-assoc (assoc feat-sym context))
              (feat-value (cadr feat-value-assoc))
              (feat-score-key (list feat-sym feat-value))
-             (feat-score (cdr (assoc feat-score-key scores))))
-        (when feat-score
-          (setq cand-score (+ cand-score (* feat-score feat-weight))))))
-    cand-score))
+             (feat-score (cdr (assoc feat-score-key scores)))
+             (feat-total-score-key (list feat-sym 'TOTAL))
+             (feat-total-score (cdr (assoc feat-total-score-key scores)))
+             (feat-percent-score (if (and feat-total-score
+                                          feat-score
+                                          (> feat-total-score 0))
+                                     (/ feat-score (float feat-total-score))
+                                   0.0))
+             (comp `((:feature . ,feat-sym)
+                     (:config . ,feat-config)
+                     (:score . ,feat-score)
+                     (:total . ,feat-total-score)
+                     (:percent . ,feat-percent-score))))
+        (push comp retval)))
+    retval))
+
+(defun dg-company-statistics-score-calc (cand &optional using-company-prefix)
+  (let ((retval 0)
+        (score-components (dg-company-statistics--score-calc-components
+                           cand using-company-prefix)))
+    (dolist (comp score-components)
+      (let ((comp-score (or (cdr (assoc :score comp)))))
+        (setq retval (+ retval (or comp-score 0)))))
+    retval))
 
 ;; score manipulation in one place --- know about hash value alist structure
 

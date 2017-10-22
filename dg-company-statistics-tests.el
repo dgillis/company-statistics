@@ -296,7 +296,7 @@ V2 (starting at index I2) satisfy the binary predicate PRED, default
               (major-mode extra-mode))))
        (dg-company-statistics--finished "foo")) ;adds to scores, history, index
      (dg-company-statistics--log-revert 4) ;reverts scores only, so...
-     (aset cs-history 4 `("foo" ((major-mode extra-mode) . 1) ((global t) . 1)))
+     (aset cs-history 4 `("foo" ((major-mode extra-mode) . 1) ((global t) . 1) ((major-mode TOTAL) . 1) ((global TOTAL) . 1)))
      (setq cs-index (mod (1+ cs-index) dg-company-statistics-size))
      (should (my/hash-compare dg-company-statistics--scores cs-scores))
      (should (equal dg-company-statistics--log cs-history))
